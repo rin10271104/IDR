@@ -1,1 +1,234 @@
-123
+#ラベリングのコード
+
+import tkinter as tk
+from PIL import Image, ImageTk
+import math
+import os
+
+rootWidth = 600
+rootHeight = 600
+resize_id = None
+current_page_index = 0
+
+root_images_path = r"/Users/ikedaarisa/Desktop/work/JR-BigData/W04/抽出"
+images_path = [os.path.join(root_images_path, f) for f in os.listdir(root_images_path) if f.endswith(".jpg")]
+
+total_page = math.ceil(len(images_path) / 6)
+
+imageStatus = {}
+
+csv_path = r"/Users/ikedaarisa/Desktop/work/JR-BigData/W04/output.csv"
+
+if os.path.exists(csv_path):
+    import pandas as pd
+    df = pd.read_csv(csv_path)
+    for i in range(len(df)):
+        if df.loc[i, "path"] == "current_page_index":
+            current_page_index = int(df.loc[i, "status"])
+        else:
+            imageStatus[df.loc[i, "path"]] = df.loc[i, "status"]
+
+class ImageInfo:
+    def __init__(self, path):
+        self.path = path
+        self.image = Image.open(path)
+        self.width, self.height = self.image.size
+        self.photo = ImageTk.PhotoImage(self.image)
+        self.image_status = "no_model"
+        
+    def get_path(self):
+        return self.path
+        
+    def get_image(self):
+        return self.image
+    
+    def get_photo(self):
+        return self.photo
+    
+    def get_image_status(self):
+        return self.image_status
+    
+    def set_image_status(self, status):
+        self.image_status = status
+    
+    def reSize(self, maxWidth, maxHeight):
+        aspect_ratio = self.width / self.height
+        
+        if self.width / maxWidth > self.height / maxHeight:
+            new_width = maxWidth
+            new_height = int(maxWidth / aspect_ratio)
+            position = (0, (maxHeight - new_height) // 2)
+        else:
+            new_width = int(maxHeight * aspect_ratio)
+            new_height = maxHeight
+            position = ((maxWidth - new_width) // 2, 0)
+        
+        self.image = self.image.resize((new_width, new_height))
+        self.width, self.height = self.image.size
+        self.photo = ImageTk.PhotoImage(self.image)
+        
+        return position
+
+def resize_image():
+    for i in range(3):
+        for j in range(2):
+            canvasWidth = canvases[i][j].winfo_width()
+            canvasHeight = canvases[i][j].winfo_height()
+            if imageInfs[i][j] is None:
+                photo = None
+                position = (0, 0)
+            else:
+                image = imageInfs[i][j]
+                position = image.reSize(canvasWidth, canvasHeight)
+                photo = image.get_photo()
+            canvases[i][j].delete("all")
+            canvases[i][j].create_image(position[0], position[1], anchor=tk.NW, image=photo)
+
+def on_changed(event):
+    global resize_id
+    if resize_id is not None:
+        root.after_cancel(resize_id)
+    resize_id = root.after(200, resize_image)
+
+def load_image():
+    global current_page_index, imageStatus
+    for i in range(3):
+        for j in range(2):
+            img_index = i * 2 + j + current_page_index * 6
+            if img_index < len(images_path):
+                imageInfs[i][j] = ImageInfo(images_path[img_index])
+                if imageInfs[i][j].get_path() in imageStatus:
+                    imageInfs[i][j].set_image_status(imageStatus[imageInfs[i][j].get_path()])
+            else:
+                imageInfs[i][j] = None
+    assign_button_function()
+    change_canvas_color()
+
+def assign_button_function():
+    for i in range(3):
+        for j in range(2):
+            button_list[i][j][0].config(command=lambda i=i, j=j: change_image_status(imageInfs[i][j], "no_model"))
+            button_list[i][j][1].config(command=lambda i=i, j=j: change_image_status(imageInfs[i][j], "human"))
+            button_list[i][j][2].config(command=lambda i=i, j=j: change_image_status(imageInfs[i][j], "mannequin"))
+            button_list[i][j][3].config(command=lambda i=i, j=j: change_image_status(imageInfs[i][j], "error"))
+
+def change_canvas_color():
+    for i in range(3):
+        for j in range(2):
+            if imageInfs[i][j] is not None:
+                image_status = imageInfs[i][j].get_image_status()
+                if image_status == "no_model":
+                    canvases[i][j].config(bg="black")
+                    frames[i][j].config(bg="black")
+                elif image_status == "human":
+                    canvases[i][j].config(bg="lightgreen")
+                    frames[i][j].config(bg="lightgreen")
+                elif image_status == "mannequin":
+                    canvases[i][j].config(bg="lightblue")
+                    frames[i][j].config(bg="lightblue")
+                elif image_status == "error":
+                    canvases[i][j].config(bg="coral")
+                    frames[i][j].config(bg="coral")
+            else:
+                canvases[i][j].config(bg="white")
+                frames[i][j].config(bg="white")
+
+def change_image_status(imageInfo, status):
+    if imageInfo is not None:
+        if status in ["no_model", "human", "mannequin", "error"]:
+            imageInfo.set_image_status(status)
+    change_canvas_color()
+
+def save_image_status():
+    for i in range(3):
+        for j in range(2):
+            if imageInfs[i][j] is not None:
+                status = imageInfs[i][j].get_image_status()
+                imageStatus[imageInfs[i][j].get_path()] = status
+
+def reNewPage(action):
+    global current_page_index
+    save_image_status()
+    renew = False
+    if action == "next" and current_page_index + 1 < total_page:
+        current_page_index += 1
+        renew = True
+    elif action == "prev" and current_page_index > 0:
+        current_page_index -= 1
+        renew = True
+    page_label.config(text=f"{current_page_index + 1} / {total_page}")
+    if renew:
+        load_image()
+        resize_image()
+
+root = tk.Tk()
+root.title("Tkinter Frame Example")
+root.geometry(f'{rootWidth}x{rootHeight}')
+root.bind("<Configure>", on_changed)
+
+for i in range(2):
+    root.grid_rowconfigure(i, weight=1)
+root.grid_columnconfigure(0, weight=1)
+
+for i in range(3):
+    root.grid_rowconfigure(i, weight=1)
+for j in range(2):
+    root.grid_columnconfigure(j, weight=1)
+
+frames = [[None for _ in range(2)] for _ in range(3)]
+imageInfs = [[None for _ in range(2)] for _ in range(3)]
+
+main_frame = tk.Frame(root, borderwidth=1, relief="solid")
+main_frame.pack(expand=True, fill=tk.BOTH)
+
+canvases = [[None for _ in range(2)] for _ in range(3)]
+button_frames = [[None for _ in range(2)] for _ in range(3)]
+for i in range(3):
+    main_frame.grid_rowconfigure(i, weight=1)
+for j in range(2):
+    main_frame.grid_columnconfigure(j, weight=1)
+
+button_list = [[[None for _ in range(4)] for _ in range(2)] for _ in range(3)]
+
+for i in range(3):
+    for j in range(2):
+        image = imageInfs[i][j]
+        frames[i][j] = tk.Frame(main_frame, borderwidth=4, relief="sunken")
+        frames[i][j].grid(row=i, column=j, sticky="nsew", padx=10, pady=10)
+        canvases[i][j] = tk.Canvas(frames[i][j], width=100, height=100, borderwidth=1, relief="ridge")
+        canvases[i][j].pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        button_frames[i][j] = tk.Frame(frames[i][j], borderwidth=1, relief="raised", height=100, width=50)
+        button_frames[i][j].pack(side=tk.RIGHT, fill=tk.Y, expand=False)
+        button_list[i][j][0] = tk.Button(button_frames[i][j], text="No Model", width=10, height=2, foreground="black", highlightbackground="gray")
+        button_list[i][j][0].grid(row=0, column=0, sticky="nsew")
+        button_list[i][j][1] = tk.Button(button_frames[i][j], text="Human", width=10, height=2, foreground="green", highlightbackground="lightgreen")
+        button_list[i][j][1].grid(row=1, column=0, sticky="nsew")
+        button_list[i][j][2] = tk.Button(button_frames[i][j], text="Mannequin", width=10, height=2, foreground="blue", highlightbackground="lightblue")
+        button_list[i][j][2].grid(row=2, column=0, sticky="nsew")
+        button_list[i][j][3] = tk.Button(button_frames[i][j], text="Error", width=10, height=2, foreground="red", highlightbackground="coral")
+        button_list[i][j][3].grid(row=3, column=0, sticky="nsew")
+
+footer_frame = tk.Frame(root, borderwidth=1, relief="solid", height=50)
+footer_frame.pack(expand=False, fill=tk.BOTH)
+
+footer_frame.grid_rowconfigure(0, weight=1)
+footer_frame.grid_columnconfigure(0, weight=1)
+footer_frame.grid_columnconfigure(1, weight=1)
+footer_frame.grid_columnconfigure(2, weight=1)
+prev_button = tk.Button(footer_frame, text="前", width=10, height=2, foreground="black", highlightbackground="gray", command=lambda: reNewPage("prev"))
+prev_button.grid(row=0, column=0, sticky="nsew")
+next_button = tk.Button(footer_frame, text="次", width=10, height=2, foreground="black", highlightbackground="gray", command=lambda: reNewPage("next"))
+next_button.grid(row=0, column=2, sticky="nsew")
+page_label = tk.Label(footer_frame, text=f"{current_page_index + 1} / {total_page}", width=10, height=2, foreground="black", highlightbackground="gray")
+page_label.grid(row=0, column=1, sticky="nsew")
+
+load_image()
+
+root.mainloop()
+
+import pandas as pd
+
+imageStatus["current_page_index"] = current_page_index
+
+df = pd.DataFrame(imageStatus.items(), columns=["path", "status"])
+df.to_csv(csv_path, index=False)
