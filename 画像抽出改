@@ -1,0 +1,71 @@
+import os
+import shutil
+import duckdb
+
+# SQLクエリを定義
+sql = '''\
+SELECT *
+FROM items
+LEFT JOIN item_categories
+ON items.category_id = item_categories.id
+WHERE (item_categories.name0 = 'レディース' AND item_categories.name1 = 'トップス') AND (items.name NOT LIKE '%様専用%' AND items.name NOT LIKE '%さん専用%')
+'''
+
+# SQLクエリを実行し、結果を取得
+rel = duckdb.sql(sql)
+df = rel.to_df()
+
+# brand_nameが指定した値のみを抽出
+valid_brands = [299, 447, 1250, 617, 597]
+df = df[df['brand_name'].isin(valid_brands)]
+
+# 欠損値の削除
+df.dropna(inplace=True)
+
+# 外れ値の除去
+def remove_outliers(df, column):
+    Q1 = df[column].quantile(0.25)
+    Q3 = df[column].quantile(0.75)
+    IQR = Q3 - Q1
+    return df[~((df[column] < (Q1 - 1.5 * IQR)) | (df[column] > (Q3 + 1.5 * IQR)))]
+
+cols = ['price', 'num_likes', 'num_comments']
+for c in cols:
+    df = remove_outliers(df, c)
+
+# サンプリング
+df = df.sample(n=10000, random_state=20, ignore_index=True)
+
+# nukitori関数
+def nukitori(df):
+    first = df['anon_item_id'].str[:2].tolist()
+    second = df['anon_item_id'].str[2:4].tolist()
+    return first, second
+
+# kaito関数
+def kaito(df, destination_folder):
+    f, s = nukitori(df)
+    yundesan = '/home/jupyter-team04/JR-BigData/data/thumbnails'
+    x = []
+
+    # 保存先フォルダの作成（存在しない場合）
+    if not os.path.exists(destination_folder):
+        os.makedirs(destination_folder)
+
+    for i in range(len(f)):
+        path = yundesan + '/' + f[i] + '/' + s[i] + '/'
+        if os.path.exists(path):
+            for p in os.listdir(path):
+                if df.loc[i, 'anon_item_id'] in p:
+                    source_file = os.path.join(path, p)
+                    dest_file = os.path.join(destination_folder, p)
+                    shutil.copy(source_file, dest_file)  # 画像をコピー
+                    x.append(dest_file)
+    return x
+
+# 画像収集とコピー先フォルダの指定
+destination_folder = '/home/jupyter-team04/JR-BigData/copied_images'
+images = kaito(df, destination_folder)
+
+# 結果の確認
+print(f"Copied {len(images)} images to {destination_folder}")

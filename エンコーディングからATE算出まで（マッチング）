@@ -1,0 +1,151 @@
+import pandas as pd
+from sklearn.linear_model import LogisticRegression
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.neighbors import NearestNeighbors
+import numpy as np
+import matplotlib.pyplot as plt
+
+# エンコーディングとATE計算、バランスチェックを行う関数
+def process_data_and_calculate_ate(file_path, output_path='processed_data.csv'):
+    # データの読み込み
+    data = pd.read_csv(file_path)
+    
+    # 'item_condition' 列のラベルエンコーディング
+    label_encoder = LabelEncoder()
+    data['item_condition'] = label_encoder.fit_transform(data['item_condition'])
+    
+    # 'description' 列の長さを計算し、新しい共変量として追加
+    data['description_length'] = data['description'].apply(lambda x: len(str(x)))
+
+    # 'size' 列の処理
+    data['free'] = data['size'].apply(lambda x: 1 if x == 7 else 0)
+    data['size'] = data['size'].replace(7, 0)
+    
+    # 頻度エンコーディングの適用 ('category_id')
+    category_freq_encoding = data['category_id'].value_counts(normalize=True)
+    data['category_id'] = data['category_id'].map(category_freq_encoding)
+    
+    # ターゲットエンコーディングの適用 ('brand_name' based on 'status')
+    data['status_numeric'] = data['status'].apply(lambda x: 1 if x == 'sold_out' else 0)
+    brand_target_mean = data.groupby('brand_name')['status_numeric'].mean()
+    data['brand_name'] = data['brand_name'].map(brand_target_mean)
+
+    # 'shipping_from_area' のワンホットエンコーディング
+    data = pd.get_dummies(data, columns=['shipping_from_area'], drop_first=True)
+
+    # 'shipping_method' のワンホットエンコーディングとPCA
+    data = pd.get_dummies(data, columns=['shipping_method'], drop_first=True)
+    shipping_method_cols = [col for col in data.columns if col.startswith("shipping_method_")]
+    shipping_method_data = data[shipping_method_cols]
+    
+    # shipping_method 列の標準化とPCAの適用
+    scaler = StandardScaler()
+    shipping_method_data_scaled = scaler.fit_transform(shipping_method_data)
+    pca = PCA(n_components=0.95, random_state=42)
+    shipping_method_pca = pca.fit_transform(shipping_method_data_scaled)
+    
+    # PCAの結果をデータフレームに追加
+    for i in range(shipping_method_pca.shape[1]):
+        data[f'shipping_method_pca_{i+1}'] = shipping_method_pca[:, i]
+    data = data.drop(columns=shipping_method_cols)
+
+    # 順序尺度変数のラベルエンコーディング
+    ordinal_columns = {
+        'shipping_duration': sorted(data['shipping_duration'].unique()),
+        'size': sorted(data['size'].dropna().unique())
+    }
+    for col, categories in ordinal_columns.items():
+        ordinal_mapping = {category: i for i, category in enumerate(categories)}
+        data[col] = data[col].map(ordinal_mapping)
+
+    # 他の共変量も含めて標準化
+    features_to_scale = data.drop(columns=['anon_item_id', 'model', 'status', 'description', 'status_numeric']).columns
+    data[features_to_scale] = scaler.fit_transform(data[features_to_scale])
+
+    # 傾向スコアの算出
+    X = data.drop(columns=['anon_item_id', 'model', 'status', 'description', 'status_numeric'])
+    y = data['model']
+    
+    propensity_model = LogisticRegression(max_iter=500, random_state=42)
+    propensity_model.fit(X, y)
+    data['propensity_score'] = propensity_model.predict_proba(X)[:, 1]
+
+    # IPWによるATEの計算
+    weights = np.where(data['model'] == 1, 1 / data['propensity_score'], 1 / (1 - data['propensity_score']))
+    ATE_ipw = (data['status_numeric'] * weights).mean()
+
+    # 傾向スコアマッチングの実行（1対1最近傍マッチング）
+    treated = data[data['model'] == 1]
+    control = data[data['model'] == 0]
+    
+    # マッチングのために、最近傍法を使用
+    nbrs = NearestNeighbors(n_neighbors=1, algorithm='ball_tree').fit(control[['propensity_score']])
+    distances, indices = nbrs.kneighbors(treated[['propensity_score']])
+    
+    # マッチング後のデータを抽出
+    matched_control = control.iloc[indices.flatten()]
+    matched_data = pd.concat([treated, matched_control], ignore_index=True)
+
+    # マッチング後のATEの計算
+    treated_outcome = matched_data.loc[matched_data['model'] == 1, 'status_numeric']
+    control_outcome = matched_data.loc[matched_data['model'] == 0, 'status_numeric']
+    ATE_psm = treated_outcome.mean() - control_outcome.mean()
+
+    # 傾向スコアの分布のプロット
+    plt.figure(figsize=(10, 6))
+    plt.hist(data.loc[data['model'] == 1, 'propensity_score'], bins=20, alpha=0.5, label='Treated (model=1)')
+    plt.hist(data.loc[data['model'] == 0, 'propensity_score'], bins=20, alpha=0.5, label='Control (model=0)')
+    plt.xlabel('Propensity Score')
+    plt.ylabel('Frequency')
+    plt.title('Distribution of Propensity Scores by Treatment Group')
+    plt.legend()
+    plt.show()
+    
+    # 共変量バランスのチェック（ラブプロットによるSMDのプロット）
+    covariates = X.columns
+    smd_before = []
+    smd_after = []
+    
+    for covariate in covariates:
+        treated_mean = data.loc[data['model'] == 1, covariate].mean()
+        control_mean = data.loc[data['model'] == 0, covariate].mean()
+        treated_var = data.loc[data['model'] == 1, covariate].var()
+        control_var = data.loc[data['model'] == 0, covariate].var()
+        smd = abs(treated_mean - control_mean) / np.sqrt((treated_var + control_var) / 2)
+        smd_before.append(smd)
+
+        treated_mean_adj = matched_data.loc[matched_data['model'] == 1, covariate].mean()
+        control_mean_adj = matched_data.loc[matched_data['model'] == 0, covariate].mean()
+        smd_adj = abs(treated_mean_adj - control_mean_adj) / np.sqrt((treated_var + control_var) / 2)
+        smd_after.append(smd_adj)
+
+    # ラブプロットの作成
+    plt.figure(figsize=(12, 8))
+    indices = np.arange(len(covariates))
+    plt.plot(smd_before, indices, "o", label="Before Matching")
+    plt.plot(smd_after, indices, "o", label="After Matching")
+    plt.axvline(x=0.1, color='red', linestyle='--', label="Threshold (0.1)")
+    plt.yticks(indices, covariates)
+    plt.xlabel("Standardized Mean Difference (SMD)")
+    plt.ylabel("Covariates")
+    plt.title("Love Plot: Covariate Balance Before and After Matching")
+    plt.legend()
+    plt.show()
+    
+    # 傾向スコアと不要な列を除外してデータフレームを保存
+    final_data = data.drop(columns=['propensity_score', 'anon_item_id', 'model', 'status', 'description', 'status_numeric'])
+    final_data.to_csv(output_path, index=False)
+    print(f"Processed data saved to {output_path}")
+
+    return ATE_psm, ATE_ipw, smd_before, smd_after
+
+# ファイルパスの指定
+file_path = 'kutyan_updated.csv'
+
+# 関数の実行
+ATE_psm, ATE_ipw, smd_before, smd_after = process_data_and_calculate_ate(file_path)
+print("ATE (Propensity Score Matching):", ATE_psm)
+print("ATE (IPW):", ATE_ipw)
+print("SMD Before Matching:", smd_before)
+print("SMD After Matching:", smd_after)
