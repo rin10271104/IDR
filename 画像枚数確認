@@ -1,0 +1,27 @@
+import os
+
+def count_images_in_folder(folder_path):
+    """
+    指定されたフォルダ内の画像ファイルの枚数をカウントします。
+
+    Parameters:
+        folder_path (str): フォルダのパス。
+
+    Returns:
+        int: フォルダ内の画像ファイル数。
+    """
+    # 対応する画像ファイルの拡張子
+    image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif'}
+
+    # 画像の枚数をカウント
+    image_count = sum(
+        1 for file in os.listdir(folder_path)
+        if os.path.isfile(os.path.join(folder_path, file)) and os.path.splitext(file)[1].lower() in image_extensions
+    )
+
+    return image_count
+
+# 使用例
+folder_path = "/home/jupyter-team04/JR-BigData/processed_images/人物着用"  # 画像が格納されているフォルダのパス
+image_count = count_images_in_folder(folder_path)
+print(f"フォルダ '{folder_path}' 内の画像ファイルの枚数: {image_count} 枚")
