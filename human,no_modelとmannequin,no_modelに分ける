@@ -1,0 +1,25 @@
+import pandas as pd
+
+# 元のCSVファイルのパス
+csv_path = r'C:\path\to\your\file.csv'
+
+# 分割後のCSVファイルの保存先
+output_csv_mannequin_no_model = r'C:\path\to\your\mannequin_no_model.csv'
+output_csv_human_no_model = r'C:\path\to\your\human_no_model.csv'
+
+# 元のCSVファイルを読み込む
+df = pd.read_csv(csv_path)
+
+# status列がmannequinまたはno_modelのデータを抽出
+mannequin_no_model_df = df[df['status'].isin(['mannequin', 'no_model'])]
+
+# status列がhumanまたはno_modelのデータを抽出
+human_no_model_df = df[df['status'].isin(['human', 'no_model'])]
+
+# 抽出したデータをそれぞれCSVファイルに保存
+mannequin_no_model_df.to_csv(output_csv_mannequin_no_model, index=False)
+human_no_model_df.to_csv(output_csv_human_no_model, index=False)
+
+print("データを2つのCSVファイルに分割しました。")
+print(f"mannequinとno_model -> {output_csv_mannequin_no_model}")
+print(f"humanとno_model -> {output_csv_human_no_model}")
