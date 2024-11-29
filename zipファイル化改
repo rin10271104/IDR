@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Jul 21 11:46:38 2024
+
+@author: ikedaarisa
+"""
+
+import shutil
+import os
+
+# 圧縮したいフォルダのパス
+folder_to_zip = "/home/jupyter-team04/JR-BigData/Highbrand_images"
+
+# 出力zipファイルのパス（拡張子を含めない）
+output_zip_file = "/home/jupyter-team04/output_base_folder/folder_6"
+
+# フォルダが存在するか確認
+if not os.path.exists(folder_to_zip):
+    print(f"Error: {folder_to_zip} does not exist.")
+else:
+    # 出力先ディレクトリが存在するか確認、なければ作成
+    output_dir = os.path.dirname(output_zip_file)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    # フォルダをzipファイルに圧縮
+    shutil.make_archive(output_zip_file, 'zip', os.path.dirname(folder_to_zip), os.path.basename(folder_to_zip))
+    print(f"{folder_to_zip} を {output_zip_file}.zip に圧縮しました。")

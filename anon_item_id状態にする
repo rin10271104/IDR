@@ -1,0 +1,50 @@
+import pandas as pd
+
+# CSVファイルのパス
+csv_path = r'C:\Users\atsus\OneDrive\デスクトップ\ジョイリ\ジョイリ\合体\aho.csv'
+
+# CSVファイルをデータフレームとして読み込む
+df = pd.read_csv(csv_path)
+
+# 最初の93文字を削除
+df['path'] = df['path'].apply(lambda x: x[56:] if isinstance(x, str) else x)
+
+# 修正後のデータを確認（最初の5行）
+print("修正後のデータ:")
+print(df['path'].head())
+
+# 列名を変更
+df.rename(columns={'path': 'anon_item_id'}, inplace=True)
+
+# 修正後のCSVを保存
+output_csv_path = r'C:\Users\atsus\OneDrive\デスクトップ\ジョイリ\ジョイリ\合体\ahopppp.csv'
+df.to_csv(output_csv_path, index=False)
+
+print(f"\n処理が完了しました。修正済みのCSVファイルは {output_csv_path} に保存されました。")
+
+
+
+###############################################################################################
+
+import pandas as pd
+
+# CSVファイルのパス
+csv_path = r'C:\Users\atsus\OneDrive\デスクトップ\ジョイリ\ジョイリ\合体\ahopppp.csv'
+
+# CSVファイルをデータフレームとして読み込む
+df = pd.read_csv(csv_path)
+
+# 最後の5文字を削除
+df['anon_item_id'] = df['anon_item_id'].apply(lambda x: x[:-6] if isinstance(x, str) else x)
+
+# 修正後のデータを確認（最初の5行）
+print("修正後のデータ:")
+print(df['anon_item_id'].head())
+
+
+
+# 修正後のCSVを保存
+output_csv_path = r'C:\Users\atsus\OneDrive\デスクトップ\ジョイリ\ジョイリ\合体\ahopppp.csv'
+df.to_csv(output_csv_path, index=False)
+
+print(f"\n処理が完了しました。修正済みのCSVファイルは {output_csv_path} に保存されました。")

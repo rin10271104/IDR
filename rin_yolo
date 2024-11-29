@@ -1,0 +1,57 @@
+import os
+import shutil
+from PIL import Image
+
+# 画像が保存されているディレクトリのパス
+directory_path = '/home/jupyter-team04/JR-BigData/rin.hibura.bunkatu/batch_2'
+output_dir = '/home/jupyter-team04/JR-BigData/W11'  # 保存先のディレクトリ
+
+# 保存先フォルダが存在しない場合は作成
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
+
+# YOLOv5モデルの読み込み（適切にロード済みのモデルが必要）
+# model = torch.hub.load('ultralytics/yolov5', 'custom', path='/path/to/your/yolov5s.pt')
+
+# ディレクトリ内のすべてのファイルをリスト
+for filename in os.listdir(directory_path):
+    file_path = os.path.join(directory_path, filename)
+    
+    # 画像ファイルかどうかを拡張子で確認
+    if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff')):
+        try:
+            # 画像を開く
+            img = Image.open(file_path)
+            
+            # 推論を実行
+            results = model(img)
+
+            # 結果を表示（オプション）
+            results.show()  # 検出された物体を画像で表示
+
+            # 検出結果をコンソールに出力
+            results.print()  # 画像に検出された物体のラベルと信頼度をコンソールに表示
+
+            # 検出されたラベル（物体の種類）を取得
+            labels = results.names
+            detected_classes = results.xyxy[0][:, -1].cpu().numpy()
+
+            # 「person」のラベルが検出されているかどうかをチェック
+            detected_person = any(label == 'person' for label in [labels[int(cls)] for cls in detected_classes])
+
+            # 「person」が検出された場合は、指定したフォルダに保存
+            if detected_person:
+                print(f"{filename} に人物が含まれます。")
+                target_folder = os.path.join(output_dir, '人物着用')
+            else:
+                print(f"{filename} に人物は含まれていません。")
+                target_folder = os.path.join(output_dir, '平置き')
+
+            # 対象のフォルダに画像をコピー
+            if not os.path.exists(target_folder):
+                os.makedirs(target_folder)
+            shutil.copy(file_path, target_folder)  # 画像をコピー
+            print(f"画像 '{filename}' を '{target_folder}' に保存しました。")
+
+        except Exception as e:
+            print(f"{filename} の処理中にエラーが発生しました: {e}")

@@ -1,0 +1,23 @@
+import pandas as pd
+
+# CSVファイルのパス
+csv_path = r'C:\path\to\your\file.csv'
+
+# CSVファイルをデータフレームとして読み込む
+csv_df = pd.read_csv(csv_path)
+
+# CSVのpath列をリストに変換
+csv_paths = csv_df['path'].tolist()
+
+# dfデータフレームからanon_item_idが一致する行を抽出
+matched_df = df[df['anon_item_id'].isin(csv_paths)]
+
+# 抽出結果を確認（最初の5行）
+print("一致するデータ:")
+print(matched_df.head())
+
+# 必要に応じて抽出結果を新しいCSVファイルとして保存
+output_csv_path = r'C:\path\to\your\matched_data.csv'
+matched_df.to_csv(output_csv_path, index=False)
+
+print(f"\n抽出結果を {output_csv_path} に保存しました。")
